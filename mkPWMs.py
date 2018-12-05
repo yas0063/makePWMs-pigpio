@@ -26,92 +26,120 @@ cycle                                                         cycle
 start                                                         start
 
 
-One function is provided:
+To create a new PWM, the following method is provided:
 
-set_waves(ch, pS_, pH_, pL_, times, micros_):
+set_waves(ch, pS_, pH_, pL_, times):
 
 ch is 0 for the first GPIO, 1 for the second, etc.
 pS_ is a time when the first pulse becomes on. (microseconds)
 pH_ is a length of on state of puluse. (microseconds)
 pL_ is a length of off state of puluse. (microseconds)
-times is a number of pulses in 1 cycle.
-micors_ is a length of 1 cycle. (microseconds)
+times is a number of pulses in one cycle.
 
 
-All waves has to have same micros_.
+All PWMs have to same micors (length of 1 cycle. 1000000 / frequency). 
+Therefore, high frequency PWM needs to fill with pulses in one cycle.
+
 
 """
 
-PWM1=22
-PWM2=19
-PWM3=24
-PWM4=25
+class PWMs:
+   def __init__(self, pi, gpio, frequency=1000):
+      """
+      Instantiate with the pi and list of gpio used to output PWM.
 
-GPIO=[PWM1, PWM2, PWM3, PWM4]
+      Optionally the frequency may be specified in Hertz (cycles
+      per second).  The frequency defaults to 1000 Hertz.
+      """
+      self.pi = pi
+      self.frequency = frequency
+      self.micros = 1000000.0 / frequency
+      self.gpio = gpio
+      self.channels = len(gpio)
+      self.waves=[0]*self.channels
+      self.used=[False]*self.channels
+      self.old_wid = None
 
-_channels = len(GPIO)
-_waves=[0]*_channels
-_used=[False]*_channels
+      # set wave GPIO to output mode.
+      for g in gpio:
+         self.pi.set_mode(g, pigpio.OUTPUT)
 
-old_wid = None
 
-def set_waves(ch, pS_, pH_, pL_, times, micros_):
+   def set_waves(self, ch, pS_, pH_, pL_, times):
+      g = self.gpio[ch]
+      pS=int(pS_)
+      pH=int(pH_)
+      pL=int(pL_)
+      micros=int(self.micros)
 
-   g = GPIO[ch]
-   micros = int(micros_)
-   pS=int(pS_)
-   pH=int(pH_)
-   pL=int(pL_)
-   
+      wave = [pigpio.pulse(0, 1<<g, pS)]
+      for i in range(times):
+         wave.append(pigpio.pulse(1<<g, 0, pH))
+         wave.append(pigpio.pulse(0, 1<<g, pL))
+      wave.append(pigpio.pulse(0, 1<<g, micros-(pH+pL)*times-pS))
 
-   wave = [pigpio.pulse(0, 1<<g, pS)]
-   for i in range(times):
-      wave.append(pigpio.pulse(1<<g, 0, pH))
-      wave.append(pigpio.pulse(0, 1<<g, pL))
+      self.waves[ch] = wave
+      self.used[ch] = True
 
-   wave.append(pigpio.pulse(0, 1<<g, micros-(pH+pL)*times-pS))
+   def startPWM(self):
+      
+      for ch in range(len(self.gpio)):
+         if self.used[ch] == True:
+            self.pi.wave_add_generic(self.waves[ch] )
 
-   _waves[ch] = wave
-   _used[ch] = True
+      new_wid = self.pi.wave_create()
 
-def startPWM():
+      if self.old_wid is not None:
+         self.pi.wave_send_using_mode(new_wid, pigpio.WAVE_MODE_REPEAT_SYNC)
 
-   global old_wid
+         while self.pi.wave_tx_at() != new_wid:
+            pass
+         
+         self.pi.wave_delete(old_wid)
 
-   for ch in range(_channels):
+      else:
+         self.pi.wave_send_repeat(new_wid)
 
-      if _used[ch] == True:
-         pi.wave_add_generic(_waves[ch] )
+      self.old_wid = new_wid
 
-   new_wid = pi.wave_create()
+   def stopPWM(self):
+      """
+      Stop PWM on the GPIO.
+      """
+      self.pi.wave_tx_stop()
 
-   if old_wid is not None:
+      if self.old_wid is not None:
+         self.pi.wave_delete(self.old_wid)
 
-      pi.wave_send_using_mode(new_wid, pigpio.WAVE_MODE_REPEAT_SYNC)
+      
+if __name__ == "__main__":
 
-      while pi.wave_tx_at() != new_wid:
+   import time
+   import pigpio
+   import mkPWMs
+
+   PWM1=22
+   PWM2=19
+
+   GPIO=[PWM1, PWM2]
+
+   pi = pigpio.pi()
+   if not pi.connected:
+      exit(0)
+
+   pwm = mkPWMs.PWMs(pi,GPIO,100)
+   pwm.set_waves(0, 0, 1000000/1000*0.3, 1000000/1000*0.7, 5);
+   pwm.set_waves(1, 1000000/1000/2, 1000000/1000*0.3, 1000000/1000*0.7, 5);
+
+   try:
+      pwm.startPWM()
+      while True:
          pass
-
-      pi.wave_delete(old_wid)
-
-   else:
-
-      pi.wave_send_repeat(new_wid)
-
-   old_wid = new_wid
-
-pi = pigpio.pi()
-if not pi.connected:
-   exit(0)
-
-# Need to explicity set wave GPIO to output mode.
-for g in GPIO:
-   pi.set_mode(g, pigpio.OUTPUT)
-
-
-set_waves(0, 0, 1000000/1000/2, 1000000/1000/2, 5, 1000000/100);
-set_waves(1, 1000000/1000/2, 1000000/1000/2, 1000000/1000/2, 5, 1000000/100);
-startPWM()
    
+   except KeyboardInterrupt:
+      pwm.stopPWM()
+      pi.stop()
+
+
 
 
