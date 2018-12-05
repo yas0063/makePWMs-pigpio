@@ -3,44 +3,44 @@
 import time
 import pigpio
 
-# wave_PWM.py
-# 2016-03-19
-# Public Domain
-
 """
-This script shows how to use waves to generate PWM with a
-set frequency on any spare GPIO.
-
-Note that only one wave can be transmitted at a time.  So if
-waves are being used to generate PWM they can't also be used
-at the same time for another purpose.
-
-The frequency is defined by the number of cycles per second.
-
-A wave is generated of length 1000000/frequency microseconds.
-The GPIO are switched on and off within the wave to set the
-duty cycle for each GPIO.  The wave is repeatedly transmitted.
+This script shows an example of generating various PWM
+on multiple GPIO at the same time with pigpio.
 
 Waves have a resolution of one microsecond.
 
-You will only get the requested frequency if it divides
-exactly into 1000000.
+The following diagram illustrates PWM for one GPIO.
+In this case, there are two puluses in one cycle.
 
-For example, suppose you want a frequency of 7896 cycles per
-second.  The wave length will be 1000000/7896 or 126 (for an
-actual frequency of 7936.5) and there will be 126 steps
-between off and fully on.
+1      +------------+             +------------+
+       |    GPIO    |             |    GPIO    |
+       |<--- on --->|             |<--- on --->|
+       |    time    |             |    time    |
+0 -----+            +-------------+            +-----------------
+     on^         off^           on^         off^
+  +--------------------------+--------------------------+-------+
+  ^    ^            ^        ^                          ^       ^
+  0    pS         pS+pH   pS+pH+pL                 pS+2(pH+pL) micros 
+  |<----------------------- cycle time ------------------------>|
+cycle                                                         cycle
+start                                                         start
+
 
 One function is provided:
 
-set_dc(channel, dc)
+set_waves(ch, pS_, pH_, pL_, times, micros_):
 
-channel: is 0 for the first GPIO, 1 for the second, etc.
-     dc: is the duty cycle which must lie between 0 and the
-         number of steps.
+ch is 0 for the first GPIO, 1 for the second, etc.
+pS_ is a time when the first pulse becomes on. (microseconds)
+pH_ is a length of on state of puluse. (microseconds)
+pL_ is a length of off state of puluse. (microseconds)
+times is a number of pulses in 1 cycle.
+micors_ is a length of 1 cycle. (microseconds)
+
+
+All waves has to have same micros_.
+
 """
-
-FREQ=5000 # The PWM cycles per second.
 
 PWM1=22
 PWM2=19
@@ -50,28 +50,26 @@ PWM4=25
 GPIO=[PWM1, PWM2, PWM3, PWM4]
 
 _channels = len(GPIO)
-
-_dc=[0]*_channels
 _waves=[0]*_channels
 _used=[False]*_channels
 
-_micros=1000000/FREQ
-
 old_wid = None
 
-def set_waves(ch, pS_, pL_, micros_, times):
+def set_waves(ch, pS_, pH_, pL_, times, micros_):
 
    g = GPIO[ch]
    micros = int(micros_)
    pS=int(pS_)
+   pH=int(pH_)
    pL=int(pL_)
+   
 
    wave = [pigpio.pulse(0, 1<<g, pS)]
    for i in range(times):
-      wave.append(pigpio.pulse(1<<g, 0, pL))
+      wave.append(pigpio.pulse(1<<g, 0, pH))
       wave.append(pigpio.pulse(0, 1<<g, pL))
 
-   wave.append(pigpio.pulse(0, 1<<g, micros-2*pL*times+pS))
+   wave.append(pigpio.pulse(0, 1<<g, micros-(pH+pL)*times-pS))
 
    _waves[ch] = wave
    _used[ch] = True
@@ -91,11 +89,9 @@ def startPWM():
 
       pi.wave_send_using_mode(new_wid, pigpio.WAVE_MODE_REPEAT_SYNC)
 
-      # Spin until the new wave has started.
       while pi.wave_tx_at() != new_wid:
          pass
 
-      # It is then safe to delete the old wave.
       pi.wave_delete(old_wid)
 
    else:
@@ -109,12 +105,12 @@ if not pi.connected:
    exit(0)
 
 # Need to explicity set wave GPIO to output mode.
-
 for g in GPIO:
    pi.set_mode(g, pigpio.OUTPUT)
 
-set_waves(0, 0, 1000000/1000/2, 1000000/100, 5);
-set_waves(1, 1000000/1000/2, 1000000/1000/2,  1000000/100, 5);
+
+set_waves(0, 0, 1000000/1000/2, 1000000/1000/2, 5, 1000000/100);
+set_waves(1, 1000000/1000/2, 1000000/1000/2, 1000000/1000/2, 5, 1000000/100);
 startPWM()
    
 
