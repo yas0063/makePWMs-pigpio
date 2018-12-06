@@ -3,11 +3,11 @@
 import time
 import pigpio
 
-"""
-This script shows an example of generating various PWM
-on multiple GPIO at the same time with pigpio.
 
-Waves have a resolution of one microsecond.
+"""
+This class may be used to generate various PWM on multiple GPIO 
+at the same time with pigpio for Raspberry Pi.
+
 
 The following diagram illustrates PWM for one GPIO.
 In this case, there are two puluses in one cycle.
@@ -32,8 +32,8 @@ set_waves(ch, pS_, pH_, pL_, times):
 
 ch is 0 for the first GPIO, 1 for the second, etc.
 pS_ is a time when the first pulse becomes on. (microseconds)
-pH_ is a length of on state of puluse. (microseconds)
-pL_ is a length of off state of puluse. (microseconds)
+pH_ is a length of on state of pulse. (microseconds)
+pL_ is a length of off state of pulse. (microseconds)
 times is a number of pulses in one cycle.
 
 
